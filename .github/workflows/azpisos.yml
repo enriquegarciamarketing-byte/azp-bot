@@ -1,0 +1,39 @@
+name: AZ Pisos
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: azpisos
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m bot.main
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          DEST_CHANNEL: ${{ secrets.DEST_CHANNEL }}
+          SOURCE_CHANNELS: ${{ secrets.SOURCE_CHANNELS }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AGENCY_NAMES: ${{ secrets.AGENCY_NAMES }}
+          BACKFILL_MSGS: ${{ vars.BACKFILL_MSGS }}
+      # evita que GitHub desactive el cron tras 60 días sin cambios en el repo
+      - uses: gautamkrishnar/keepalive-workflow@v2

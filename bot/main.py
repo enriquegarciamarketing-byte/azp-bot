@@ -40,7 +40,9 @@ def h(s):
 
 
 def log(*a):
-    print(dt.datetime.now().strftime("%H:%M:%S"), *a, flush=True)
+    txt = " ".join(str(x) for x in a)
+    txt = re.sub(r"https?://\S+", "[url]", txt)  # nunca enseñar tokens ni claves en el log público
+    print(dt.datetime.now().strftime("%H:%M:%S"), txt, flush=True)
 
 
 # ---------------- Bot API ----------------

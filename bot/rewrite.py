@@ -1,11 +1,39 @@
 """Reescritura del post con Gemini (capa gratuita)."""
 import json
 import os
+import re
 import time
 import requests
 
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+API = "https://generativelanguage.googleapis.com/v1beta/"
+_model_cache = {}
+
+
+def pick_model(api_key):
+    """Elige el Gemini Flash disponible (Google retira versiones cada pocos meses)."""
+    if os.environ.get("GEMINI_MODEL"):
+        return os.environ["GEMINI_MODEL"]
+    if "m" in _model_cache:
+        return _model_cache["m"]
+    r = requests.get(API + "models", headers={"x-goog-api-key": api_key},
+                     params={"pageSize": 200}, timeout=30)
+    r.raise_for_status()
+    names = [m["name"].split("/", 1)[1] for m in r.json().get("models", [])
+             if "generateContent" in m.get("supportedGenerationMethods", [])]
+    bad = ("image", "tts", "audio", "live", "lite", "thinking", "exp", "preview", "embedding", "8b")
+    flash = [n for n in names if "flash" in n and not any(b in n for b in bad)]
+    if "gemini-flash-latest" in names:
+        choice = "gemini-flash-latest"
+    elif flash:
+        def ver(n):
+            nums = re.findall(r"\d+(?:\.\d+)?", n)
+            return float(nums[0]) if nums else 0
+        choice = sorted(flash, key=ver)[-1]
+    else:
+        choice = next((n for n in names if "flash" in n), names[0])
+    _model_cache["m"] = choice
+    print("modelo Gemini:", choice, flush=True)
+    return choice
 
 PROMPT = """Eres el redactor del canal de Telegram AZ Pisos, que comparte pisos off market para inversores particulares.
 Te paso el anuncio original de una inmobiliaria. Devuelve SOLO un JSON válido con esta forma:
@@ -60,7 +88,8 @@ def rewrite(source_text, api_key=None, retries=3):
     last = None
     for attempt in range(retries):
         try:
-            r = requests.post(URL, params={"key": api_key}, json=body, timeout=90)
+            url = API + f"models/{pick_model(api_key)}:generateContent"
+            r = requests.post(url, headers={"x-goog-api-key": api_key}, json=body, timeout=90)
             if r.status_code in (429, 500, 503):
                 time.sleep(20 * (attempt + 1))
                 last = f"HTTP {r.status_code}"
@@ -74,6 +103,6 @@ def rewrite(source_text, api_key=None, retries=3):
                 raise ValueError("JSON incompleto")
             return data
         except Exception as e:  # noqa: BLE001
-            last = str(e)[:200]
+            last = re.sub(r"https?://\S+", "[url]", str(e))[:200]
             time.sleep(5)
     raise RuntimeError(f"Gemini falló: {last}")

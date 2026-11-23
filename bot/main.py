@@ -105,11 +105,23 @@ class Bot:
 
 def private_chat(token):
     """Chat privado de quien haya escrito /start al bot (para el modo privado)."""
-    r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", timeout=30).json()
+    fixed = os.environ.get("PREVIEW_CHAT", "").strip()
+    if fixed:
+        return fixed
+    api = f"https://api.telegram.org/bot{token}/"
+    me = requests.get(api + "getMe", timeout=30).json()
+    log("bot conectado:", "@" + (me.get("result") or {}).get("username", "?") if me.get("ok") else me.get("description"))
+    wh = requests.get(api + "getWebhookInfo", timeout=30).json().get("result") or {}
+    if wh.get("url"):
+        log("ojo: este bot tiene un webhook activo, así que otro programa recibe sus mensajes")
+    r = requests.get(api + "getUpdates", timeout=30).json()
+    if not r.get("ok"):
+        log("getUpdates:", r.get("description"))
     chats = [u["message"]["chat"]["id"] for u in r.get("result", [])
              if u.get("message", {}).get("chat", {}).get("type") == "private"]
+    log(f"mensajes privados pendientes: {len(chats)}")
     if not chats:
-        sys.exit("Escribe /start a tu bot en Telegram y vuelve a lanzar el modo privado")
+        sys.exit("No encuentro tu /start: escribe /start a este bot y vuelve a lanzar el modo privado")
     return chats[-1]
 
 

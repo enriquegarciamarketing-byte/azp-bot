@@ -37,6 +37,7 @@ jobs:
           AGENCY_NAMES: ${{ secrets.AGENCY_NAMES }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BACKFILL_MSGS: ${{ vars.BACKFILL_MSGS }}
+          PREVIEW_CHAT: ${{ secrets.PREVIEW_CHAT }}
           MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.modo || 'real' }}
       - name: Guardar estado
         if: always()

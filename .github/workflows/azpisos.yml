@@ -15,7 +15,6 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  actions: write
   contents: write
 
 jobs:
@@ -48,5 +47,3 @@ jobs:
             git commit -m "estado"
             git push
           fi
-      # evita que GitHub desactive el cron tras 60 días sin actividad
-      - uses: gautamkrishnar/keepalive-workflow@v2

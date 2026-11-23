@@ -16,6 +16,7 @@ from pathlib import Path
 import requests
 
 from bot import card, content, web_reader
+from bot import rewrite as rw
 from bot.rewrite import rewrite
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -237,6 +238,7 @@ def run():
     env("GEMINI_API_KEY")
     backfill = int(os.environ.get("BACKFILL_MSGS") or 0)
     state = load_state()
+    rw.preferred["model"] = state.get("gemini")
     now = dt.datetime.now(dt.timezone.utc)
     published = 0
 
@@ -278,6 +280,8 @@ def run():
                         break
             state["last"][key] = new_last
     if MODE == "real":
+        if rw.preferred["model"]:
+            state["gemini"] = rw.preferred["model"]
         save_state(state)
     log(f"publicados {published}")
 

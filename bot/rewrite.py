@@ -7,6 +7,7 @@ import requests
 
 API = "https://generativelanguage.googleapis.com/v1beta/"
 _model_cache = {}
+preferred = {"model": None}  # el último que funcionó (se guarda en state.json)
 
 
 def pick_models(api_key):
@@ -92,7 +93,10 @@ def rewrite(source_text, api_key=None):
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.6},
     }
     errors = []
-    for model in pick_models(api_key)[:6]:
+    models = pick_models(api_key)
+    if preferred["model"] in models:
+        models = [preferred["model"]] + [m for m in models if m != preferred["model"]]
+    for model in models[:6]:
         for attempt in range(2):
             try:
                 r = requests.post(API + f"models/{model}:generateContent",
@@ -116,6 +120,7 @@ def rewrite(source_text, api_key=None):
                 return data
             if data.get("copy") and data.get("titular"):
                 print("redactado con", model, flush=True)
+                preferred["model"] = model
                 return data
             errors.append(f"{model}: JSON incompleto")
             break

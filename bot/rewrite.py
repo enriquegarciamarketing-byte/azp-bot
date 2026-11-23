@@ -11,6 +11,7 @@ PROMPT = """Eres el redactor del canal de Telegram AZ Pisos, que comparte pisos 
 Te paso el anuncio original de una inmobiliaria. Devuelve SOLO un JSON válido con esta forma:
 
 {
+  "es_piso": true,
   "ciudad": "Oviedo",
   "provincia": "Asturias",
   "titular": "4 habitaciones en Oviedo rentando un 14%",
@@ -24,6 +25,7 @@ Te paso el anuncio original de una inmobiliaria. Devuelve SOLO un JSON válido c
 }
 
 Reglas de datos
+- es_piso: true solo si el anuncio presenta UN inmueble concreto en venta con su precio. false si es un artículo, una noticia, un aviso de reserva/adjudicación, un récord o publicidad del canal (en ese caso el resto de campos puede ir a null).
 - Números como enteros en euros, sin puntos ni símbolos. Usa null si el dato no aparece. No inventes nada.
 - alquiler_mes es el alquiler principal del anuncio (si hay varias opciones, la más rentable que el anuncio presente como viable).
 - reforma es lo que hay que invertir en reforma o adecuación/amueblado para esa opción de alquiler.
@@ -66,6 +68,8 @@ def rewrite(source_text, api_key=None, retries=3):
             r.raise_for_status()
             txt = r.json()["candidates"][0]["content"]["parts"][0]["text"]
             data = json.loads(txt)
+            if data.get("es_piso") is False:
+                return data
             if not data.get("copy") or not data.get("titular"):
                 raise ValueError("JSON incompleto")
             return data

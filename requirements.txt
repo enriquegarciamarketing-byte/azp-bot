@@ -1,6 +1,4 @@
-telethon==1.36.0
-cryptg
-hachoir
+requests
+beautifulsoup4
 pillow
 numpy
-requests

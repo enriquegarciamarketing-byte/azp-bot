@@ -142,74 +142,64 @@ def footer_left(d):
     return " · ".join(bits) if bits else "Para inversores"
 
 
-def group_units(msgs):
-    """msgs: lista de dicts {id, date, text, grouped_id, has_media} ordenada por id.
-    Junta álbumes (mismo grouped_id) en unidades."""
-    units, by_gid = [], {}
-    for m in msgs:
-        gid = m.get("grouped_id")
-        if gid and gid in by_gid:
-            u = by_gid[gid]
-            u["ids"].append(m["id"])
-            if m.get("has_media"):
-                u["media_ids"].append(m["id"])
-            if m.get("text") and not u["text"]:
-                u["text"] = m["text"]
-                u["urls"] = m.get("urls", [])
-            u["last_date"] = max(u["last_date"], m["date"])
-            continue
-        u = {"ids": [m["id"]], "media_ids": [m["id"]] if m.get("has_media") else [],
-             "text": m.get("text") or "", "urls": m.get("urls", []),
-             "date": m["date"], "last_date": m["date"], "reply_to": m.get("reply_to")}
-        units.append(u)
-        if gid:
-            by_gid[gid] = u
-    return units
+def units_from_web(msgs):
+    """Cada mensaje de la web ya agrupa su álbum: lo convertimos en unidad."""
+    return [{"ids": m["ids"], "media": list(m["media"]), "text": m["text"] or "",
+             "urls": m.get("urls", []), "date": m["date"], "last_date": m["date"],
+             "reply_to": m.get("reply_to"), "has_media": m.get("has_media", bool(m["media"]))}
+            for m in msgs]
+
+
+def _media_only(u):
+    return not u["text"] and u["has_media"]
 
 
 def build_listings(units, now, settle_min=8, after_min=30, before_min=3):
-    """Devuelve (eventos listos, id máximo procesable).
-    evento = {'tipo': 'piso'|'reservado', 'unit': u, 'media_ids': [...]}"""
+    """Devuelve (eventos listos, id máximo ya procesable).
+    evento = {'tipo': 'piso'|'reservado', 'unit': u, 'media': [...]}"""
     events, ready_upto = [], 0
-    i = 0
-    n = len(units)
+    i, n = 0, len(units)
     while i < n:
         u = units[i]
         kind = classify(u["text"])
         if kind == "piso":
             media = []
-            # medios justo antes (álbum publicado un instante antes del texto)
+            # álbumes publicados justo ANTES del texto (estilo Pisalia)
             j = i - 1
-            if j >= 0 and not units[j]["text"] and units[j]["media_ids"] and \
-                    (u["date"] - units[j]["last_date"]).total_seconds() <= before_min * 60 and \
-                    not units[j].get("_used"):
-                media += units[j]["media_ids"]
-                units[j]["_used"] = True
-            media += u["media_ids"]
+            pre = []
+            while j >= 0 and _media_only(units[j]) and not units[j].get("_used") and \
+                    (u["date"] - units[j]["last_date"]).total_seconds() <= before_min * 60:
+                pre.insert(0, units[j])
+                j -= 1
+            for p in pre:
+                media += p["media"]
+                p["_used"] = True
+            media += u["media"]
+            # álbumes publicados DESPUÉS del texto (estilo Propex)
             k, last = i + 1, u["last_date"]
-            while k < n and not units[k]["text"] and \
+            while k < n and _media_only(units[k]) and \
                     (units[k]["date"] - u["date"]).total_seconds() <= after_min * 60:
-                media += units[k]["media_ids"]
+                media += units[k]["media"]
                 units[k]["_used"] = True
                 last = max(last, units[k]["last_date"])
                 k += 1
             closed = k < n or (now - last).total_seconds() >= settle_min * 60
             if not closed:
-                break  # esperar a que terminen de subir fotos
-            events.append({"tipo": "piso", "unit": u, "media_ids": media})
-            ready_upto = max(ready_upto, max(units[k - 1]["ids"]), max(u["ids"]))
+                break  # aún pueden estar subiendo fotos
+            all_ids = sorted({x for q in pre + units[i:k] for x in q["ids"]})
+            events.append({"tipo": "piso", "unit": u, "media": media, "all_ids": all_ids})
+            ready_upto = max([ready_upto] + u["ids"] + [x for q in units[i:k] for x in q["ids"]])
             i = k
             continue
         if kind == "reservado":
-            events.append({"tipo": "reservado", "unit": u, "media_ids": []})
+            events.append({"tipo": "reservado", "unit": u, "media": []})
         if not u["text"]:
-            # medios sueltos: si viene algo detrás, ese algo decide (los adjunta o no);
-            # si es lo último del canal y es reciente, esperar por si llega su texto
+            # medios sueltos: los decide el texto que venga detrás
             if i + 1 >= n and (now - u["last_date"]).total_seconds() < 60 * 60:
                 break
             if not u.get("_used") and i + 1 < n:
-                i += 1  # no avanzar el estado aún: lo decide la unidad siguiente
+                i += 1
                 continue
-        ready_upto = max(ready_upto, max(u["ids"]))
+        ready_upto = max([ready_upto] + u["ids"])
         i += 1
     return events, ready_upto

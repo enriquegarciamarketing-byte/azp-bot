@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
+    inputs:
+      prueba:
+        description: "Modo prueba: lee y redacta pero NO publica nada"
+        type: boolean
+        default: true
 
 concurrency:
   group: azpisos
@@ -11,7 +16,7 @@ concurrency:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
 
 jobs:
   publicar:
@@ -26,14 +31,22 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m bot.main
         env:
-          TG_API_ID: ${{ secrets.TG_API_ID }}
-          TG_API_HASH: ${{ secrets.TG_API_HASH }}
-          TG_SESSION: ${{ secrets.TG_SESSION }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           DEST_CHANNEL: ${{ secrets.DEST_CHANNEL }}
           SOURCE_CHANNELS: ${{ secrets.SOURCE_CHANNELS }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AGENCY_NAMES: ${{ secrets.AGENCY_NAMES }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BACKFILL_MSGS: ${{ vars.BACKFILL_MSGS }}
-      # evita que GitHub desactive el cron tras 60 días sin cambios en el repo
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.prueba && '1' || '' }}
+      - name: Guardar estado
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain state.json)" ]; then
+            git config user.name "azp-bot"
+            git config user.email "azp-bot@users.noreply.github.com"
+            git add state.json
+            git commit -m "estado"
+            git push
+          fi
+      # evita que GitHub desactive el cron tras 60 días sin actividad
       - uses: gautamkrishnar/keepalive-workflow@v2

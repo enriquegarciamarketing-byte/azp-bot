@@ -20,7 +20,9 @@ from bot.rewrite import rewrite
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE_FILE = ROOT / "state.json"
-DRY = os.environ.get("DRY_RUN", "").lower() in ("1", "true", "si", "sí", "yes")
+MODE = os.environ.get("MODE", "").strip().lower() or "real"   # real | prueba | privado
+DRY = MODE == "prueba"
+PREVIEW = MODE == "privado"
 
 RESERVADO_TXT = ("🔴 <b>RESERVADO</b>\n"
                  "Este ya tiene dueño. Activa las notificaciones para no perderte el siguiente 🔔")
@@ -99,6 +101,16 @@ class Bot:
     def caption(self, msg_id, html):
         return self.call("editMessageCaption", {"chat_id": self.chat, "message_id": msg_id,
                                                 "caption": html, "parse_mode": "HTML"})
+
+
+def private_chat(token):
+    """Chat privado de quien haya escrito /start al bot (para el modo privado)."""
+    r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", timeout=30).json()
+    chats = [u["message"]["chat"]["id"] for u in r.get("result", [])
+             if u.get("message", {}).get("chat", {}).get("type") == "private"]
+    if not chats:
+        sys.exit("Escribe /start a tu bot en Telegram y vuelve a lanzar el modo privado")
+    return chats[-1]
 
 
 # ---------------- estado ----------------
@@ -201,7 +213,13 @@ def mark_reserved(bot, state, src_h, ev):
 # ---------------- ciclo ----------------
 def run():
     sources = [s.strip().lstrip("@") for s in env("SOURCE_CHANNELS").split(",") if s.strip()]
-    bot = None if DRY else Bot(env("BOT_TOKEN"), env("DEST_CHANNEL"))
+    if DRY:
+        bot = None
+    elif PREVIEW:
+        token = env("BOT_TOKEN")
+        bot = Bot(token, private_chat(token))
+    else:
+        bot = Bot(env("BOT_TOKEN"), env("DEST_CHANNEL"))
     env("GEMINI_API_KEY")
     backfill = int(os.environ.get("BACKFILL_MSGS") or 0)
     state = load_state()
@@ -213,16 +231,19 @@ def run():
         for n_src, src in enumerate(sources, 1):
             key = h(src)
             last = state["last"].get(key)
-            if last is None or DRY:
+            if last is None or DRY or PREVIEW:
                 page = web_reader.fetch_channel(src, None)
                 newest = max((m["id"] for m in page), default=0)
-                last = newest - (backfill or (40 if DRY else 0))
-                log(f"origen {n_src}: {'prueba' if DRY else 'primera ejecución'}, desde {last}")
+                last = newest - (40 if (DRY or PREVIEW) else backfill)
+                log(f"origen {n_src}: modo {MODE}, desde {last}")
             msgs = web_reader.fetch_channel(src, last)
             units = content.units_from_web(msgs)
             events, ready_upto = content.build_listings(units, now)
             log(f"origen {n_src}: {len(msgs)} mensajes nuevos, {len(events)} eventos")
             new_last = max(last, ready_upto)
+            if PREVIEW:  # solo el último piso de cada canal, como muestra
+                pisos = [e for e in events if e["tipo"] == "piso"]
+                events = pisos[-1:]
             for ev in events:
                 fkey = f"{key}:{ev['unit']['ids'][0]}"
                 try:
@@ -242,7 +263,7 @@ def run():
                         new_last = min(new_last, min(ev.get("all_ids") or ev["unit"]["ids"]) - 1)
                         break
             state["last"][key] = new_last
-    if not DRY:
+    if MODE == "real":
         save_state(state)
     log(f"publicados {published}")
 

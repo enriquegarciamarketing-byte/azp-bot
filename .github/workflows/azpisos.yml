@@ -5,10 +5,11 @@ on:
     - cron: "*/10 * * * *"
   workflow_dispatch:
     inputs:
-      prueba:
-        description: "Modo prueba: lee y redacta pero NO publica nada"
-        type: boolean
-        default: true
+      modo:
+        description: "privado = te manda al bot el último piso de cada canal · prueba = solo log · real = publica en el canal"
+        type: choice
+        options: [privado, prueba, real]
+        default: privado
 
 concurrency:
   group: azpisos
@@ -36,7 +37,7 @@ jobs:
           AGENCY_NAMES: ${{ secrets.AGENCY_NAMES }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BACKFILL_MSGS: ${{ vars.BACKFILL_MSGS }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.prueba && '1' || '' }}
+          MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.modo || 'real' }}
       - name: Guardar estado
         if: always()
         run: |

@@ -2,7 +2,7 @@ name: AZ Pisos
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/10 * * * *"   # respaldo: GitHub lo lanza cuando puede
   workflow_dispatch:
     inputs:
       modo:
@@ -17,11 +17,22 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   publicar:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 355
+    env:
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      DEST_CHANNEL: ${{ secrets.DEST_CHANNEL }}
+      SOURCE_CHANNELS: ${{ secrets.SOURCE_CHANNELS }}
+      AGENCY_NAMES: ${{ secrets.AGENCY_NAMES }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      PREVIEW_CHAT: ${{ secrets.PREVIEW_CHAT }}
+      BACKFILL_MSGS: ${{ vars.BACKFILL_MSGS }}
+      MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.modo || 'real' }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,23 +40,31 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - run: python -m bot.main
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          DEST_CHANNEL: ${{ secrets.DEST_CHANNEL }}
-          SOURCE_CHANNELS: ${{ secrets.SOURCE_CHANNELS }}
-          AGENCY_NAMES: ${{ secrets.AGENCY_NAMES }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          BACKFILL_MSGS: ${{ vars.BACKFILL_MSGS }}
-          PREVIEW_CHAT: ${{ secrets.PREVIEW_CHAT }}
-          MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.modo || 'real' }}
-      - name: Guardar estado
-        if: always()
+      - name: Vigilar canales
         run: |
-          if [ -n "$(git status --porcelain state.json)" ]; then
-            git config user.name "azp-bot"
-            git config user.email "azp-bot@users.noreply.github.com"
-            git add state.json
-            git commit -m "estado"
-            git push
+          git config user.name "azp-bot"
+          git config user.email "azp-bot@users.noreply.github.com"
+          guardar() {
+            if [ -n "$(git status --porcelain state.json)" ]; then
+              git add state.json && git commit -qm "estado"
+              git pull -q --rebase -X theirs origin main || git rebase --abort
+              git push -q || echo "no se pudo guardar el estado"
+            else
+              git pull -q --rebase origin main || true   # coge mejoras del código sin reiniciar
+            fi
+          }
+          if [ "$MODE" != "real" ]; then
+            python -m bot.main; rc=$?; guardar; exit $rc
           fi
+          # modo real: revisar cada 10 min durante ~5 h 40 min
+          fin=$((SECONDS + 20400))
+          while [ $SECONDS -lt $fin ]; do
+            inicio=$SECONDS
+            python -m bot.main || echo "pasada con error, sigo"
+            guardar
+            espera=$((600 - (SECONDS - inicio)))
+            [ $espera -gt 0 ] && [ $((SECONDS + espera)) -lt $fin ] && sleep $espera || break
+          done
+      - name: Lanzar el siguiente turno
+        if: always() && env.MODE == 'real'
+        run: gh workflow run azpisos.yml --repo "$GITHUB_REPOSITORY" -f modo=real

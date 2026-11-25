@@ -54,7 +54,7 @@ jobs:
             fi
           }
           if [ "$MODE" != "real" ]; then
-            python -m bot.main; rc=$?; guardar; exit $rc
+            rc=0; python -m bot.main || rc=$?; guardar; exit $rc
           fi
           # modo real: revisar cada 10 min durante ~5 h 40 min
           fin=$((SECONDS + 20400))
@@ -63,7 +63,8 @@ jobs:
             python -m bot.main || echo "pasada con error, sigo"
             guardar
             espera=$((600 - (SECONDS - inicio)))
-            [ $espera -gt 0 ] && [ $((SECONDS + espera)) -lt $fin ] && sleep $espera || break
+            if [ $((SECONDS + espera)) -ge $fin ]; then break; fi
+            if [ $espera -gt 0 ]; then sleep $espera; fi
           done
       - name: Lanzar el siguiente turno
         if: always() && env.MODE == 'real'

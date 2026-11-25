@@ -85,7 +85,8 @@ def fetch_channel(channel, after_id, max_pages=6):
     return [msgs[k] for k in sorted(msgs) if after_id is None or k > after_id]
 
 
-def download(url, path):
+def download(media, path):
+    url = media["url"] if isinstance(media, dict) else media
     with requests.get(url, headers=UA, timeout=120, stream=True) as r:
         r.raise_for_status()
         with open(path, "wb") as f:

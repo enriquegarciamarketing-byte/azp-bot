@@ -16,7 +16,7 @@ from pathlib import Path
 
 import requests
 
-from bot import card, content, web_reader
+from bot import card, content, frames, web_reader
 from bot import rewrite as rw
 from bot.rewrite import rewrite
 
@@ -25,6 +25,9 @@ STATE_FILE = ROOT / "state.json"
 MODE = os.environ.get("MODE", "").strip().lower() or "real"   # real | prueba | privado
 DRY = MODE == "prueba"
 PREVIEW = MODE == "privado"
+
+READER = web_reader  # se cambia por la cuenta de Telegram si hay TG_SESSION
+BOT_MAX_UPLOAD = 49 * 1024 * 1024  # límite de subida de la API de bots
 
 RESERVADO_TXT = ("🔴 <b>RESERVADO</b>\n"
                  "Este ya tiene dueño. Activa las notificaciones para no perderte el siguiente 🔔")
@@ -210,16 +213,32 @@ def publish_listing(bot, src_h, ev, workdir):
     copy_html = content.build_copy(data["copy"], contact)
 
     # descargar medios antes de publicar nada
-    files = []
+    photos, videos = [], []
     for i, m in enumerate(ev["media"]):
         ext = "mp4" if m["type"] == "video" else "jpg"
         try:
-            files.append((m["type"], web_reader.download(m["url"], workdir / f"m{u['ids'][0]}_{i}.{ext}")))
+            path = READER.download(m, workdir / f"m{u['ids'][0]}_{i}.{ext}")
+            (videos if m["type"] == "video" else photos).append(path)
         except Exception as e:  # noqa: BLE001
             log("medio no descargado:", type(e).__name__)
+    # fotogramas de cada estancia sacados de los vídeos
+    shots = []
+    per_video = 8 if len(photos) < 6 else 4
+    for v in videos[:2]:
+        try:
+            shots += frames.extract(v, workdir, max_frames=per_video)
+        except Exception as e:  # noqa: BLE001
+            log("no se pudieron sacar fotogramas:", type(e).__name__)
+    small_videos = [v for v in videos if os.path.getsize(v) <= BOT_MAX_UPLOAD][:2]
+    if len(videos) > len(small_videos):
+        log(f"{len(videos) - len(small_videos)} vídeo(s) de más de 49 MB: se publican sus fotogramas")
+    room = 20 - len(shots) - len(small_videos)  # tope de 2 álbumes por piso
+    files = [("photo", p) for p in photos[:max(room, 4)]] + [("photo", f) for f in shots] + \
+            [("video", v) for v in small_videos]
 
     if DRY:
-        log(f"[prueba] piso: {city_line} | {data['titular']} | {len(files)} medios | copy {len(copy_html)} car.")
+        log(f"[prueba] piso: {city_line} | {data['titular']} | {len(photos)} fotos, {len(videos)} vídeos, "
+            f"{len(shots)} fotogramas | copy {len(copy_html)} car.")
         print(copy_html[:600])
         return {"s": src_h, "ids": [], "card": 0, "ref": "", "t": int(time.time()), "dry": True}
 
@@ -278,6 +297,18 @@ def mark_reserved(bot, state, src_h, ev):
 
 # ---------------- ciclo ----------------
 def run():
+    global READER
+    client = None
+    try:
+        from bot import tg_reader
+        client = tg_reader.connect()
+    except Exception as e:  # noqa: BLE001
+        log("cuenta de Telegram no disponible:", type(e).__name__)
+    if client:
+        READER = tg_reader.TgReader(client)
+        log("lectura: cuenta de Telegram (vídeos completos)")
+    else:
+        log("lectura: web pública")
     sources = [s.strip().lstrip("@") for s in env("SOURCE_CHANNELS").split(",") if s.strip()]
     state = load_state()
     if DRY:
@@ -307,11 +338,11 @@ def run():
             key = h(src)
             last = state["last"].get(key)
             if last is None or DRY or PREVIEW:
-                page = web_reader.fetch_channel(src, None)
+                page = READER.fetch_channel(src, None)
                 newest = max((m["id"] for m in page), default=0)
                 last = newest - (40 if (DRY or PREVIEW) else backfill)
                 log(f"origen {n_src}: modo {MODE}, desde {last}")
-            msgs = web_reader.fetch_channel(src, last)
+            msgs = READER.fetch_channel(src, last)
             units = content.units_from_web(msgs)
             events, ready_upto = content.build_listings(units, now)
             log(f"origen {n_src}: {len(msgs)} mensajes nuevos, {len(events)} eventos")
@@ -342,6 +373,8 @@ def run():
                         new_last = min(new_last, min(ev.get("all_ids") or ev["unit"]["ids"]) - 1)
                         break
             state["last"][key] = new_last
+    if client:
+        client.disconnect()
     if MODE == "real":
         if rw.preferred["model"]:
             state["gemini"] = rw.preferred["model"]

@@ -150,9 +150,9 @@ def resolve_channel(token, dest, known=None):
                       "y publica cualquier mensaje en el canal para que el bot lo detecte")
 
 
-def private_chat(token):
+def private_chat(token, known=None):
     """Chat privado de quien haya escrito /start al bot (para el modo privado)."""
-    fixed = os.environ.get("PREVIEW_CHAT", "").strip()
+    fixed = os.environ.get("PREVIEW_CHAT", "").strip() or known
     if fixed:
         return fixed
     api = f"https://api.telegram.org/bot{token}/"
@@ -285,7 +285,12 @@ def run():
         resolve_channel(env("BOT_TOKEN"), env("DEST_CHANNEL"), state.get("dest"))  # solo comprueba el canal
     elif PREVIEW:
         token = env("BOT_TOKEN")
-        bot = Bot(token, private_chat(token))
+        chat = private_chat(token, state.get("preview"))
+        bot = Bot(token, chat)
+        if state.get("preview") != chat:  # recordarlo: Telegram borra los mensajes pendientes a las 24 h
+            fresh = load_state()
+            fresh["preview"] = chat
+            save_state(fresh)
     else:
         token = env("BOT_TOKEN")
         bot = Bot(token, resolve_channel(token, env("DEST_CHANNEL"), state.get("dest")))

@@ -35,7 +35,7 @@ def parse_page(html):
         t = w.select_one("time[datetime]")
         date = dt.datetime.fromisoformat(t["datetime"]) if t else None
         text, urls = _text(w.select_one(".tgme_widget_message_text"))
-        media, ids, skipped = [], [pid], 0
+        media, ids, skipped, thumbs = [], [pid], 0, []
         for a in w.select("a.tgme_widget_message_photo_wrap, a.tgme_widget_message_video_player"):
             mid = _post_id(a.get("href")) or pid
             if mid not in ids:
@@ -51,9 +51,14 @@ def parse_page(html):
                     media.append({"type": "video", "url": vid["src"]})
                 else:
                     skipped += 1  # "Media is too big": la web no da el vídeo
+                    th = a.select_one("i.tgme_widget_message_video_thumb")
+                    m = BG_RX.search(th.get("style", "")) if th else None
+                    if m and m.group(1).startswith(("http", "//")):
+                        u = m.group(1)
+                        thumbs.append({"type": "photo", "url": "https:" + u if u.startswith("//") else u})
         reply = w.select_one("a.tgme_widget_message_reply")
         out.append({"id": pid, "ids": sorted(ids), "date": date, "text": text, "urls": urls,
-                    "media": media, "skipped_videos": skipped,
+                    "media": media, "skipped_videos": skipped, "thumbs": thumbs,
                     "has_media": bool(media) or skipped > 0,
                     "reply_to": _post_id(reply.get("href")) if reply else None})
     return out

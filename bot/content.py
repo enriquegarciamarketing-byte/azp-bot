@@ -144,7 +144,7 @@ def footer_left(d):
 
 def units_from_web(msgs):
     """Cada mensaje de la web ya agrupa su álbum: lo convertimos en unidad."""
-    return [{"ids": m["ids"], "media": list(m["media"]), "text": m["text"] or "",
+    return [{"ids": m["ids"], "media": list(m["media"]), "thumbs": m.get("thumbs", []), "text": m["text"] or "",
              "urls": m.get("urls", []), "date": m["date"], "last_date": m["date"],
              "reply_to": m.get("reply_to"), "has_media": m.get("has_media", bool(m["media"]))}
             for m in msgs]
@@ -187,6 +187,8 @@ def build_listings(units, now, settle_min=8, after_min=30, before_min=3):
             if not closed:
                 break  # aún pueden estar subiendo fotos
             all_ids = sorted({x for q in pre + units[i:k] for x in q["ids"]})
+            if not media:  # sin fotos ni vídeos descargables: al menos la portada de los vídeos
+                media = [t for q in pre + units[i:k] for t in q.get("thumbs", [])]
             events.append({"tipo": "piso", "unit": u, "media": media, "all_ids": all_ids})
             ready_upto = max([ready_upto] + u["ids"] + [x for q in units[i:k] for x in q["ids"]])
             i = k

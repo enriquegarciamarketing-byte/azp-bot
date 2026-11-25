@@ -5,6 +5,7 @@ Se ejecuta cada 10 min desde GitHub Actions. El estado vive en state.json (con n
 """
 import datetime as dt
 import hashlib
+import html as htmlmod
 import json
 import os
 import re
@@ -69,11 +70,21 @@ class Bot:
             raise RuntimeError(f"{method}: {j.get('description')}")
 
     def photo(self, path, caption=None):
-        with open(path, "rb") as f:
-            d = {"chat_id": self.chat}
-            if caption:
-                d.update(caption=caption, parse_mode="HTML")
-            return self.call("sendPhoto", d, {"photo": f})
+        d = {"chat_id": self.chat}
+        if caption:
+            d.update(caption=caption, parse_mode="HTML")
+        try:
+            with open(path, "rb") as f:
+                return self.call("sendPhoto", d, {"photo": f})
+        except ConfigError:
+            raise
+        except RuntimeError:
+            if not caption:
+                raise
+            d.update(caption=htmlmod.unescape(re.sub(r"<[^>]+>", "", caption)))
+            d.pop("parse_mode")
+            with open(path, "rb") as f:
+                return self.call("sendPhoto", d, {"photo": f})
 
     def text(self, html, reply_to=None):
         d = {"chat_id": self.chat, "text": html, "parse_mode": "HTML",
@@ -212,8 +223,15 @@ def publish_listing(bot, src_h, ev, workdir):
         print(copy_html[:600])
         return {"s": src_h, "ids": [], "card": 0, "ref": "", "t": int(time.time()), "dry": True}
 
-    card_msg = bot.photo(card_path)
-    bot.text(copy_html)
+    plain_len = len(htmlmod.unescape(re.sub(r"<[^>]+>", "", copy_html)).encode("utf-16-le")) // 2
+    caption = None
+    if plain_len <= 1000:  # límite de Telegram para el pie de foto (1024, con margen para "RESERVADO")
+        caption = copy_html
+        card_msg = bot.photo(card_path, caption=copy_html)
+    else:
+        log(f"copy de {plain_len} caracteres: va en mensaje aparte")
+        card_msg = bot.photo(card_path)
+        bot.text(copy_html)
     for i in range(0, len(files), 10):
         chunk = files[i:i + 10]
         try:
@@ -226,7 +244,7 @@ def publish_listing(bot, src_h, ev, workdir):
                 except Exception as e2:  # noqa: BLE001
                     log("medio descartado:", str(e2)[:80])
     ref = (contact.get("referencia") or "").strip()
-    return {"s": src_h, "ids": ev.get("all_ids", u["ids"]),
+    return {"s": src_h, "ids": ev.get("all_ids", u["ids"]), "cap": caption,
             "card": card_msg["message_id"], "ref": h(ref) if ref else "", "t": int(time.time())}
 
 
@@ -252,7 +270,7 @@ def mark_reserved(bot, state, src_h, ev):
         return
     bot.text(RESERVADO_TXT, reply_to=target["card"])
     try:
-        bot.caption(target["card"], "🔴 <b>RESERVADO</b>")
+        bot.caption(target["card"], "🔴 <b>RESERVADO</b>" + ("\n\n" + target["cap"] if target.get("cap") else ""))
     except Exception as e:  # noqa: BLE001
         log("no se pudo marcar la imagen:", str(e)[:80])
     target["r"] = True

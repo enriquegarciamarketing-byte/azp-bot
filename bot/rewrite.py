@@ -68,14 +68,16 @@ Reglas de datos
 - contacto: copia LITERALMENTE el email, teléfono, enlace de WhatsApp y la referencia o asunto que el anuncio pide indicar al contactar (p. ej. "REF 56"). No lo cambies.
 
 Reglas del copy (texto para Telegram en HTML, solo etiquetas <b> e <i>)
+- Va como pie de foto de la imagen: MÁXIMO 800 caracteres en total contando emojis, espacios y saltos de línea. Es un límite duro de Telegram.
+- Prioriza lo que decide la inversión: ubicación, precio, alquiler, rentabilidad, reforma, honorarios. Fuera relleno, adjetivos y repeticiones.
 - Español de España, cercano y fácil de entender para alguien que no es experto, pero serio. Párrafos cortos.
 - Estructura:
   1) Primera línea: 🏠 <b>Ciudad · titular descriptivo</b>
-  2) Dos o tres frases describiendo el piso y por qué la zona tiene demanda (solo con lo que diga el anuncio).
+  2) Una o dos frases cortas describiendo el piso y por qué la zona tiene demanda (solo con lo que diga el anuncio).
   3) 💰 <b>Precio X €</b>
   4) 📊 <b>Los números</b> y debajo una línea por dato con su emoji (🛏 alquiler por habitaciones, 🔑 alquiler tradicional, 🔨 reforma, 🧾 gastos fijos IBI y comunidad, 🏦 hipoteca si la detalla). Pon la rentabilidad bruta calculada como alquiler anual / precio, con un decimal.
   5) 👉 <b>En cristiano</b> una frase que traduzca la rentabilidad a algo tangible (por cada 100.000 € invertidos…).
-  6) ✅ servicios que ofrezcan (llave en mano, firma a distancia, financiación…), si los hay.
+  6) ✅ servicios que ofrezcan (llave en mano, firma a distancia, financiación…) en una sola línea, si los hay.
   7) 🤝 Honorarios de la inmobiliaria X € + IVA, si aparecen. Plazos de escritura o reserva si aparecen.
 - NO incluyas datos de contacto, email, teléfono, referencia ni llamadas a escribir: se añaden después automáticamente.
 - NUNCA nombres a la inmobiliaria de origen ({agencias}) ni a ninguna otra. Di "la inmobiliaria". Nada de enlaces ni @.

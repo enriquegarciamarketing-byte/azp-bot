@@ -1,7 +1,7 @@
 {
  "last": {
   "2c0fd9bcc4a5": 160,
-  "471cf1bf48e6": 6709
+  "471cf1bf48e6": 6711
  },
  "posts": [
   {
@@ -25,6 +25,17 @@
    "card": 184,
    "ref": "1e793ffd7fe6",
    "t": 1795623714
+  },
+  {
+   "s": "471cf1bf48e6",
+   "ids": [
+    6710,
+    6711
+   ],
+   "cap": "🏠 <b>Monóvar · Rentabilidad del 9,9% alquilado</b>\n\nPiso en segunda planta sin ascensor, ya alquilado con seguro de impago. Ubicado en una zona con alta demanda por el corredor industrial entre Monóvar, Elda y Petrer.\n\n💰 <b>Precio 67.900 €</b>\n\n📊 <b>Los números</b>\n🔑 Alquiler actual: 560 €/mes\n📈 Rentabilidad bruta: 9,9%\n🧾 IBI: 75 €/año | Comunidad: 24 €/mes\n\n👉 <b>En cristiano</b>: te genera casi 9.900 € brutos al año por cada 100.000 € invertidos sin mover un dedo.\n\n✅ Firma 100% a distancia, gestión integral disponible y opción de financiación hasta el 100%.\n\n🤝 Honorarios de la inmobiliaria: 4.000 € + IVA. Plazo de escritura de 2 a 3 meses.\n\n📲 WhatsApp +34672581622 indicando <b>Propex 566</b>",
+   "card": 186,
+   "ref": "a8ba48590396",
+   "t": 1795628712
   }
  ],
  "fails": {},

@@ -58,6 +58,10 @@ class Bot:
             j = r.json()
             if j.get("ok"):
                 return j["result"]
+            desc = (j.get("description") or "").lower()
+            if any(x in desc for x in ("chat not found", "not enough rights", "bot is not a member",
+                                       "need administrator", "bot was kicked", "unauthorized")):
+                raise ConfigError(f"{method}: {j.get('description')}")
             retry = (j.get("parameters") or {}).get("retry_after")
             if retry and attempt < 3:
                 time.sleep(retry + 1)
@@ -104,6 +108,35 @@ class Bot:
     def caption(self, msg_id, html):
         return self.call("editMessageCaption", {"chat_id": self.chat, "message_id": msg_id,
                                                 "caption": html, "parse_mode": "HTML"})
+
+
+class ConfigError(RuntimeError):
+    """Fallo de configuración (canal, permisos): no es culpa del piso, no se cuenta como intento."""
+
+
+def resolve_channel(token, dest):
+    """Comprueba el canal destino; si no existe, lo busca entre los canales donde el bot es admin."""
+    api = f"https://api.telegram.org/bot{token}/"
+    cand = [dest]
+    if not str(dest).startswith(("@", "-")):
+        cand.append("@" + str(dest))
+    for c in cand:
+        r = requests.get(api + "getChat", params={"chat_id": c}, timeout=30).json()
+        if r.get("ok"):
+            log("canal destino:", r["result"].get("title"))
+            return r["result"]["id"]
+    chans = {}
+    for u in requests.get(api + "getUpdates", timeout=30).json().get("result", []):
+        for k in ("my_chat_member", "channel_post", "edited_channel_post"):
+            ch = (u.get(k) or {}).get("chat")
+            if ch and ch.get("type") == "channel":
+                chans[ch["id"]] = ch.get("title", "")
+    if len(chans) == 1 or any("pisos" in t.lower() for t in chans.values()):
+        cid = next((i for i, t in chans.items() if "pisos" in t.lower()), next(iter(chans)))
+        log("canal destino encontrado por el bot:", chans[cid], "| pon este id en DEST_CHANNEL:", cid)
+        return cid
+    raise ConfigError("No encuentro el canal destino: revisa DEST_CHANNEL, que el bot sea admin, "
+                      "y publica cualquier mensaje en el canal para que el bot lo detecte")
 
 
 def private_chat(token):
@@ -230,11 +263,13 @@ def run():
     sources = [s.strip().lstrip("@") for s in env("SOURCE_CHANNELS").split(",") if s.strip()]
     if DRY:
         bot = None
+        resolve_channel(env("BOT_TOKEN"), env("DEST_CHANNEL"))  # solo comprueba el canal
     elif PREVIEW:
         token = env("BOT_TOKEN")
         bot = Bot(token, private_chat(token))
     else:
-        bot = Bot(env("BOT_TOKEN"), env("DEST_CHANNEL"))
+        token = env("BOT_TOKEN")
+        bot = Bot(token, resolve_channel(token, env("DEST_CHANNEL")))
     env("GEMINI_API_KEY")
     backfill = int(os.environ.get("BACKFILL_MSGS") or 0)
     state = load_state()
@@ -271,6 +306,10 @@ def run():
                     else:
                         mark_reserved(bot, state, key, ev)
                     state["fails"].pop(fkey, None)
+                except ConfigError as e:
+                    log("ERROR DE CONFIGURACIÓN (no se cuenta como intento):", e)
+                    new_last = min(new_last, min(ev.get("all_ids") or ev["unit"]["ids"]) - 1)
+                    break
                 except Exception as e:  # noqa: BLE001
                     fails = state["fails"].get(fkey, 0) + 1
                     state["fails"][fkey] = fails
@@ -287,4 +326,8 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    try:
+        run()
+    except ConfigError as e:
+        log("ERROR DE CONFIGURACIÓN:", e)
+        sys.exit(1)

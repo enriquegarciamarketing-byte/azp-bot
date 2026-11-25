@@ -114,10 +114,10 @@ class ConfigError(RuntimeError):
     """Fallo de configuración (canal, permisos): no es culpa del piso, no se cuenta como intento."""
 
 
-def resolve_channel(token, dest):
+def resolve_channel(token, dest, known=None):
     """Comprueba el canal destino; si no existe, lo busca entre los canales donde el bot es admin."""
     api = f"https://api.telegram.org/bot{token}/"
-    cand = [dest]
+    cand = [dest] + ([known] if known else [])
     if not str(dest).startswith(("@", "-")):
         cand.append("@" + str(dest))
     for c in cand:
@@ -261,18 +261,19 @@ def mark_reserved(bot, state, src_h, ev):
 # ---------------- ciclo ----------------
 def run():
     sources = [s.strip().lstrip("@") for s in env("SOURCE_CHANNELS").split(",") if s.strip()]
+    state = load_state()
     if DRY:
         bot = None
-        resolve_channel(env("BOT_TOKEN"), env("DEST_CHANNEL"))  # solo comprueba el canal
+        resolve_channel(env("BOT_TOKEN"), env("DEST_CHANNEL"), state.get("dest"))  # solo comprueba el canal
     elif PREVIEW:
         token = env("BOT_TOKEN")
         bot = Bot(token, private_chat(token))
     else:
         token = env("BOT_TOKEN")
-        bot = Bot(token, resolve_channel(token, env("DEST_CHANNEL")))
+        bot = Bot(token, resolve_channel(token, env("DEST_CHANNEL"), state.get("dest")))
+        state["dest"] = bot.chat  # recordar el canal aunque el secreto esté mal
     env("GEMINI_API_KEY")
     backfill = int(os.environ.get("BACKFILL_MSGS") or 0)
-    state = load_state()
     rw.preferred["model"] = state.get("gemini")
     now = dt.datetime.now(dt.timezone.utc)
     published = 0
